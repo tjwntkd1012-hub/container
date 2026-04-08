@@ -1,0 +1,33 @@
+name: Build Kasm Official Wine Image
+
+on:
+  workflow_dispatch: # 직접 버튼 눌러서 실행
+
+jobs:
+  build-wine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Kasm Source
+        uses: actions/checkout@v4
+        with:
+          repository: 'kasmweb/docker-images'
+          ref: 'develop' # Kasm은 최신 소스를 보통 develop 브랜치에 둡니다.
+
+      - name: Build Wine Image
+        run: |
+          # 핵심: Kasm의 Core 이미지를 기반으로 Wine을 설치하는 Dockerfile 경로로 이동
+          # 이미지 용량을 줄이기 위해 build-arg 등을 조절할 수 있습니다.
+          cd src/ubuntu/install/wine
+          docker build -t kasm-wine-local .
+          
+      - name: Save and Compress
+        run: |
+          # 용량이 클 수 있으니 tar로 묶고 gzip으로 압축합니다.
+          docker save kasm-wine-local > kasm_wine.tar
+          
+      - name: Upload to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kasm-official-wine-tar
+          path: kasm_wine.tar
+          retention-days: 1
