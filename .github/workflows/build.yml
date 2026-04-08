@@ -1,0 +1,31 @@
+name: Build Kasm Wine From Dockerfile
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Official Source
+        uses: actions/checkout@v4
+        with:
+          repository: 'kasmweb/docker-images' # 공식 소스 저장소
+          ref: 'develop'
+
+      - name: Build Image from Dockerfile
+        run: |
+          # Wine Dockerfile이 있는 위치로 이동
+          cd src/ubuntu/install/wine
+          # 내 이름을 붙여서 직접 빌드 (마트 안 거치고 집에서 직접 요리)
+          docker build -t my-own-kasm-wine .
+          
+      - name: Save to Tar
+        run: |
+          docker save -o kasm_wine.tar my-own-kasm-wine
+          
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wine-image-from-source
+          path: kasm_wine.tar
