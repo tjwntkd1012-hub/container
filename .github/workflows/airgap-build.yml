@@ -1,0 +1,71 @@
+name: Generate Air-Gap Package
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: 
+
+jobs:
+  build-and-package:
+    runs-on: windows-latest # 윈도우 이미지 처리를 위해 필수
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create Workspace
+        run: |
+          mkdir deploy_package
+          mkdir deploy_package/scripts
+
+      - name: Download Docker Engine (v27.x)
+        shell: powershell
+        run: |
+          # 최신 안정화 버전 다운로드
+          $dockerUrl = "https://download.docker.com/win/static/stable/x86_64/docker-27.3.1.zip"
+          Invoke-WebRequest -Uri $dockerUrl -OutFile "deploy_package/docker.zip"
+          Write-Host "Docker 엔진 다운로드 완료"
+
+      - name: Pull and Save Windows Image
+        shell: powershell
+        run: |
+          $IMAGE = "mcr.microsoft.com/windows/servercore:ltsc2022"
+          
+          Write-Host "이미지 Pull 시작 (약 2GB)..."
+          docker pull $IMAGE
+          
+          Write-Host "이미지 Save 시작 (시간이 다소 소요됩니다)..."
+          # 용량 절감을 위해 직접적인 tar 생성
+          docker save -o "deploy_package/servercore_2022.tar" $IMAGE
+          Write-Host "이미지 파일 생성 완료"
+
+      - name: Copy SW and Install Scripts
+        shell: powershell
+        run: |
+          # 1. 전시기 SW 파일 복사 (레포지토리에 DisplayApp 폴더가 있다고 가정)
+          if (Test-Path "./DisplayApp") {
+              Copy-Item -Path "./DisplayApp" -Destination "deploy_package/" -Recurse
+          }
+          
+          # 2. Dockerfile 복사
+          Copy-Item -Path "./Dockerfile" -Destination "deploy_package/"
+
+          # 3. 폐쇄망 설치 스크립트 작성 (즉석 생성)
+          $installScript = @"
+          Expand-Archive -Path `./docker.zip -DestinationPath 'C:\Program Files\' -Force
+          `$env:Path += ';C:\Program Files\docker'
+          [System.Environment]::SetEnvironmentVariable('Path', `$env:Path + ';C:\Program Files\docker', 'Machine')
+          dockerd --register-service
+          Start-Service docker
+          docker load -i ./servercore_2022.tar
+          docker build -t display-sw:latest .
+          Write-Host '설치 완료!' -ForegroundColor Green
+          "@
+          $installScript | Out-File -FilePath "deploy_package/scripts/install.ps1" -Encoding utf8
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AirGap-Package-LTSC2022
+          path: deploy_package/
+          retention-days: 5 # 용량이 크므로 보관 기간을 짧게 설정
